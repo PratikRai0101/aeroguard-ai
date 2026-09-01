@@ -1,0 +1,64 @@
+# config.yaml
+# AeroGuard AI Configuration
+# ========================
+
+# Serial Configuration
+serial:
+  port: /dev/ttyUSB0
+  baudrate: 115200
+  timeout: 1
+  reconnect_attempts: 3
+
+# Model Configuration
+models:
+  rf_model: rf_air_model.pkl
+  lr_model: lr_trend_model.pkl
+  lstm_model: lstm_air_model.h5
+  scaler: scaler.pkl
+  feature_cols:
+    - temp
+    - hum
+    - gas
+    - pm25
+
+# LSTM Configuration
+lstm:
+  window_size: 10
+  features: 3
+
+# AQI Thresholds
+aqi:
+  good_max: 50
+  moderate_max: 100
+  poor_max: 200
+  very_poor_max: 300
+  severe_max: 400
+
+# Alert Configuration
+alerts:
+  enabled: true
+  sound: true
+  auto_dismiss_seconds: 10
+
+# Dashboard Configuration
+dashboard:
+  refresh_rate: 2
+  history_max: 40
+  chart_height: 250
+  gauge_max_temp: 50
+  gauge_max_hum: 100
+  gauge_max_gas: 1000
+  default_port: /dev/ttyUSB0
+
+# External API
+api:
+  outdoor_enabled: true
+  outdoor_url: https://air-quality-api.open-meteo.com/v1/air-quality
+  latitude: 21.1458
+  longitude: 79.0882
+
+# Data Collection
+data:
+  save_enabled: true
+  save_interval: 60
+  filename: sensor_data.csv

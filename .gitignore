@@ -1,0 +1,70 @@
+# Python
+venv/
+venv310/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environment
+.env
+.venv
+env/
+ENV/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# ML Models (large files, train locally)
+Models/*.h5
+Models/*.pkl
+Models/*.joblib
+Models/*.onnx
+Models/*.pt
+Models/*.bin
+
+# Node.js / React Native
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/.next/
+mobile/.env
+mobile/.env.local
+mobile/.env.development.local
+mobile/.env.test.local
+mobile/.env.production.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+logs/
+
+# Ollama temp files
+*.tmp
+*.temp
+
+# Training data (large CSVs)
+Data/real_air_data.csv
+Data/*.csv
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
