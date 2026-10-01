@@ -48,7 +48,11 @@ class SensorDatabase:
                 lstm_status TEXT,
                 lstm_confidence REAL,
                 trend TEXT,
-                aqi_predicted REAL
+                aqi_predicted REAL,
+                risk_level TEXT,
+                reliability_label TEXT,
+                reliability_probability REAL,
+                explanation TEXT
             )
         ''')
         
@@ -68,8 +72,28 @@ class SensorDatabase:
         c.execute('CREATE INDEX IF NOT EXISTS idx_readings_time ON readings(timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_predictions_time ON predictions(timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_alerts_time ON alerts(timestamp)')
-        
+
         conn.commit()
+        conn.close()
+
+        # Migration-safe columns for databases created before Phase 3.
+        for column, coltype in (
+            ('risk_level', 'TEXT'),
+            ('reliability_label', 'TEXT'),
+            ('reliability_probability', 'REAL'),
+            ('explanation', 'TEXT'),
+        ):
+            self._ensure_column('predictions', column, coltype)
+
+    def _ensure_column(self, table, column, coltype):
+        """Add a column to a table if it does not already exist."""
+        conn = sqlite3.connect(self.db_file)
+        c = conn.cursor()
+        c.execute(f'PRAGMA table_info({table})')
+        existing = {row[1] for row in c.fetchall()}
+        if column not in existing:
+            c.execute(f'ALTER TABLE {table} ADD COLUMN {column} {coltype}')
+            conn.commit()
         conn.close()
     
     def add_reading(self, temp, hum, gas, aqi, status, source='sensor'):
@@ -87,18 +111,30 @@ class SensorDatabase:
         conn.commit()
         conn.close()
     
-    def add_prediction(self, rf_status, rf_conf, lstm_status, lstm_conf, trend, aqi_pred):
-        """Add a prediction"""
+    def add_prediction(self, rf_status, rf_conf, lstm_status, lstm_conf, trend, aqi_pred,
+                       risk_level=None, reliability_label=None,
+                       reliability_probability=None, explanation=None):
+        """Add a prediction with optional risk, reliability and explanation."""
         conn = sqlite3.connect(self.db_file)
         c = conn.cursor()
-        
+
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
+
+        if isinstance(explanation, (dict, list)):
+            explanation = json.dumps(explanation)
+
         c.execute('''
-            INSERT INTO predictions (timestamp, rf_status, rf_confidence, lstm_status, lstm_confidence, trend, aqi_predicted)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (timestamp, rf_status, rf_conf, lstm_status, lstm_conf, trend, aqi_pred))
-        
+            INSERT INTO predictions (
+                timestamp, rf_status, rf_confidence, lstm_status, lstm_confidence,
+                trend, aqi_predicted, risk_level, reliability_label,
+                reliability_probability, explanation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            timestamp, rf_status, rf_conf, lstm_status, lstm_conf, trend, aqi_pred,
+            risk_level, reliability_label, reliability_probability, explanation,
+        ))
+
         conn.commit()
         conn.close()
     

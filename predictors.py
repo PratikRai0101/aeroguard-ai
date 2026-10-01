@@ -32,6 +32,7 @@ import pandas as pd
 import joblib
 
 from calibration import GasCalibrator
+from explain import SHAP_AVAILABLE, ModelExplainer
 from preprocessing import (
     AQI_LABELS,
     FEATURE_COLS,
@@ -39,6 +40,8 @@ from preprocessing import (
     label_for,
     transform_features,
 )
+import reliability
+import risk as risk_assessment
 
 
 METADATA_FILE = 'model_metadata.json'
@@ -60,6 +63,8 @@ class AQIPredictor:
         self.feature_cols = list(FEATURE_COLS)
         self.labels = dict(AQI_LABELS)
         self.metadata = {}
+        self.residual_std = None
+        self.explainer = None
 
         self._load_metadata()
         self._load_models()
@@ -84,6 +89,11 @@ class AQIPredictor:
         if meta_labels:
             # JSON keys are strings; normalise back to ints.
             self.labels = {int(k): v for k, v in meta_labels.items()}
+
+        # Residual std from validation powers the reliability estimate.
+        residual_std = self.metadata.get('lr', {}).get('residual_std')
+        if residual_std is not None:
+            self.residual_std = float(residual_std)
 
     def _load_models(self):
         """Load all models from disk."""
@@ -274,11 +284,39 @@ class AQIPredictor:
 
         return {'aqi': max(0.0, round(aqi, 1)), 'trend': trend}
 
+    def explain_current(self, temp, hum, gas, top_k=3):
+        """Explain the current Random Forest prediction with TreeSHAP."""
+        if self.rf_model is None or not SHAP_AVAILABLE:
+            return None
+
+        X, errors = self._features(temp, hum, gas)
+        if X is None:
+            return None
+
+        predicted = int(self.rf_model.predict(X)[0])
+        if self.explainer is None:
+            self.explainer = ModelExplainer(self.rf_model, self.feature_cols)
+        return self.explainer.explain(X.values, predicted, top_k=top_k)
+
     def predict_all(self, temp, hum, gas):
         """Run all models and return a combined result."""
         current = self.predict_current(temp, hum, gas)
         future = self.predict_future_lstm()
         trend = self.predict_trend_lr(temp, hum, gas)
+
+        reliability_report = None
+        if self.residual_std:
+            reliability_report = reliability.assess(trend['aqi'], self.residual_std)
+
+        risk_report = risk_assessment.assess_risk(
+            trend['aqi'],
+            temp=temp,
+            hum=hum,
+            trend=trend['trend'],
+            reliability=reliability_report,
+        )
+
+        explanation = self.explain_current(temp, hum, gas)
 
         self.add_reading(temp, hum, gas)
 
@@ -286,6 +324,9 @@ class AQIPredictor:
             'current': current,
             'future': future,
             'trend': trend,
+            'reliability': reliability_report,
+            'risk': risk_report,
+            'explanation': explanation,
             'buffer_size': len(self.buffer),
         }
 

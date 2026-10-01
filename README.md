@@ -355,6 +355,9 @@ AeroGuard AI/
 │   ├── dataset.py        # UCI + legacy dataset loaders, reference AQI
 │   ├── calibration.py    # Gas calibration (log-log + T/RH) + MQ-135 helpers
 │   ├── validation.py     # MAE/RMSE/r/category-agreement vs reference
+│   ├── reliability.py    # Prediction interval + category probability
+│   ├── risk.py           # Airborne disease environmental risk (Low/Mod/High)
+│   ├── explain.py        # SHAP (TreeSHAP) explanations
 │   ├── training.py       # Shared dataset -> split -> calibration pipeline
 │   ├── predictors.py      # ML pipeline
 │   ├── database.py        # SQLite persistence
