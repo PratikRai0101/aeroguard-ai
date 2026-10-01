@@ -1,0 +1,62 @@
+{
+  "feature_cols": [
+    "temp",
+    "hum",
+    "gas"
+  ],
+  "labels": {
+    "0": "Good",
+    "1": "Moderate",
+    "2": "Poor",
+    "3": "Very Poor",
+    "4": "Severe",
+    "5": "Hazardous"
+  },
+  "trained_at": "2026-10-02T03:57:47",
+  "data_file": "real_air_data.csv",
+  "data_rows": 768,
+  "preprocessing": {
+    "rows_in": 768,
+    "rows_out": 768,
+    "out_of_range_values": 0,
+    "missing_values_filled": 0,
+    "rows_dropped": 0,
+    "constant_features": [
+      "temp",
+      "hum"
+    ],
+    "smoothing_window": 5
+  },
+  "rf": {
+    "accuracy": 0.7077922077922078,
+    "classes": [
+      0,
+      1,
+      2
+    ]
+  },
+  "lr": {
+    "mae": 20.985983965760052,
+    "rmse": 27.663666837521895,
+    "r2": 0.11790002843503156,
+    "residual_std": 26.832646597616712
+  },
+  "notes": [
+    "PM2.5 is not a model feature: the sensor node cannot measure it.",
+    "Split is chronological; the test set is unseen future data.",
+    "The gas feature in real_air_data.csv is synthetic (see collect_real_data.py).",
+    "Phase 2 will replace synthetic gas with calibrated MQ-135 readings."
+  ],
+  "lstm": {
+    "window": 10,
+    "val_loss": 0.5931166410446167,
+    "val_accuracy": 0.719298243522644,
+    "validated_classes": [
+      0,
+      1,
+      2
+    ],
+    "train_sequences": 644,
+    "val_sequences": 114
+  }
+}

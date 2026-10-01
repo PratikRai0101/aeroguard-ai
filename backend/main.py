@@ -11,6 +11,9 @@ BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Must come before FastAPI/pandas: imports TensorFlow first (see bootstrap_tf.py).
+import bootstrap_tf  # noqa: E402,F401
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

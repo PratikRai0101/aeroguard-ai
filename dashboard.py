@@ -2,6 +2,9 @@
 # AeroGuard AI - Phase 1.5 Dashboard
 # Real-time AQI Monitoring with LSTM Predictions, SQLite Persistence, and Dev Mode
 
+# Must be first: imports TensorFlow before pandas/streamlit (see bootstrap_tf.py).
+import bootstrap_tf  # noqa: F401
+
 import streamlit as st
 import pandas as pd
 import numpy as np

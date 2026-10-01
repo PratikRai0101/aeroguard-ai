@@ -2,6 +2,9 @@
 # AeroGuard AI - Phase 1.5 CLI Dashboard
 # Real-time AQI Monitoring with Auto-Detect ESP32
 
+# Must be first: imports TensorFlow before pandas/sklearn (see bootstrap_tf.py).
+import bootstrap_tf  # noqa: F401
+
 import os
 import time
 import numpy as np

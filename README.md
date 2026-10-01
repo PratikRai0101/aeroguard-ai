@@ -149,8 +149,8 @@ python dashboard_v2.py
 
 | Value | Description |
 |-------|-------------|
-| **Current (RF)** | Current air quality classification (Random Forest) with confidence % |
-| **Future (LSTM)** | Predicted status for next 10 readings (LSTM) with confidence % |
+| **Current (RF)** | Current air quality classification (Random Forest) with class probability % (not a validated reliability measure) |
+| **Future (LSTM)** | Predicted status for next 10 readings (LSTM) with class probability % (not a validated reliability measure) |
 | **Trend (LR)** | Linear Regression AQI prediction + trend direction (rising/falling/stable) |
 
 ### Charts
@@ -212,11 +212,38 @@ python dashboard_v2.py
 | 🕐 Timestamp | Current time HH:MM:SS |
 | 📊 Sensors | T (Temp °C), H (Humidity %), G (Gas raw value) |
 | 🌬️ AQI | Air Quality Index + (Category) |
-| 🤖 RF | Random Forest classification with confidence |
-| 🤖 LSTM | LSTM prediction with confidence |
+| 🤖 RF | Random Forest classification with class probability |
+| 🤖 LSTM | LSTM prediction with class probability |
 | 🤖 Trend | Linear Regression AQI + trend direction |
 | 🏥 | Health status + recommendation |
 | 📦 Mode | MOCK or REAL + outlier rejection % |
+
+### ML feature contract & preprocessing
+
+The models consume exactly three features, defined once in `preprocessing.py`:
+
+```
+FEATURE_COLS = ['temp', 'hum', 'gas']
+```
+
+PM2.5 is deliberately **not** a feature: the sensor node cannot measure it, so
+training on it would be train/serve skew.
+
+* `preprocessing.py` is the single source of truth for cleaning. Both
+  `train_model.py` / `train_lstm.py` and the live `predictors.py` path call it,
+  so train-time and serve-time transformations match.
+* `AQI_LABELS` (0–5: Good → Hazardous) is the canonical class mapping. Do not
+define label maps elsewhere.
+* `model_metadata.json` records the feature schema, labels and honest metrics
+  (accuracy, MAE, RMSE, R²). Prediction output labels it "class probability",
+  not a validated reliability measure — a statistically justified reliability
+  indicator is a later phase.
+
+> **Import order (macOS):** `bootstrap_tf.py` must be imported before pandas,
+> streamlit or sklearn in any entry point. On some macOS setups (pandas 3.x +
+> TensorFlow 2.21 on arm64), importing pandas first makes every `fit`/`predict`
+> call deadlock. This is why `dashboard.py`, `dashboard_v2.py` and
+> `backend/main.py` start with `import bootstrap_tf`.
 
 ---
 
@@ -298,11 +325,12 @@ AeroGuard AI/
 ├── requirements.txt       # Python dependencies
 │
 ├── Core Modules/
-│   ├── aqi_utils.py       # AQI calculation
+│   ├── aqi_utils.py       # AQI calculation + outlier detection
 │   ├── alerts.py         # Health alerts
+│   ├── preprocessing.py  # Cleaning, validation, feature contract
 │   ├── predictors.py      # ML pipeline
 │   ├── database.py        # SQLite persistence
-│   └── outlier_detector.py
+│   └── bootstrap_tf.py    # Import-order shim (see note below)
 │
 ├── Scripts/
 │   ├── collect_real_data.py  # Fetch real data from API
@@ -321,7 +349,8 @@ AeroGuard AI/
     ├── rf_air_model.pkl
     ├── lr_trend_model.pkl
     ├── lstm_air_model.h5
-    └── scaler.pkl
+    ├── scaler.pkl
+    └── model_metadata.json  # feature schema, labels, metrics
 
 Backend (Phase 2)
 ├── backend/
