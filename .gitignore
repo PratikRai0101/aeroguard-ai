@@ -65,9 +65,7 @@ Data/real_air_data.csv
 Data/*.csv
 
 # Downloaded datasets (fetch with `python fetch_datasets.py`)
-data/*.csv
-data/*.zip
-data/*.xlsx
+data/
 
 # Build artifacts
 dist/
