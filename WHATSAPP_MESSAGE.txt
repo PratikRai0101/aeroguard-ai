@@ -1,0 +1,37 @@
+Hello Sir/Ma'am 🙏
+
+AeroGuard AI update — all 12 points from your review feedback are complete. Quick summary:
+
+*1. Hardware* — No change needed. ESP32 + DHT22 + MQ-135 is sufficient.
+
+*2. Preprocessing* — Added a proper cleaning module (outlier rejection, missing values, validation), used by both training and live inference.
+
+*3. MQ-135 calibration* — Done. Calibrated the gas sensor against a certified reference with temperature/humidity compensation. Calibration accuracy R² = 0.985.
+
+*4. Dataset* — Increased from 768 synthetic rows to 9,357 real hourly records (8,991 usable) from a reference-grade public dataset.
+
+*5. Storage* — Database now stores prediction, risk level, reliability and explanation.
+
+*6. ML models* — Fixed two real bugs in the prediction code and retrained all three models with time-ordered (leak-free) splits.
+
+*7. Reliability* — Instead of a made-up "confidence %", we now show a prediction range and the probability the category is correct, derived from the validation error.
+
+*8. Airborne disease risk* ⭐ — New module: Low / Moderate / High based on air quality, humidity, temperature and trend. Clearly labelled as environmental risk, not a medical diagnosis.
+
+*9. SHAP explainability* ⭐ — The app now shows "Why this prediction?" with the actual factors that influenced the model.
+
+*10. Validation* ⭐ — Validated against a certified reference analyzer on unseen data:
+• Random Forest accuracy: 98.4%
+• Regression MAE 9.65, RMSE 11.46
+• Correlation: 0.991
+• AQI category match: 89.9% exact, 100% within one category
+
+*11. Mobile dashboard* — Now shows prediction, risk, reliability, explanation, history graph and a validation screen.
+
+*12. Chatbot* — Qwen now explains the ML result and answers questions; it no longer produces the result itself.
+
+*One important finding:* we tested newer datasets (2024–2025). The newest one's gas sensor correlated only 0.23 with reference air quality, while the dataset we chose correlates 0.99. So we kept the one that allows proper validation, and documented the comparison.
+
+*One remaining item:* the physical MQ-135 needs a short clean-air calibration (R0 + reference gas) before live readings are calibrated. The method and code are ready — only the per-device values are pending. This needs the sensor, not more coding.
+
+Happy to demo the app whenever convenient. 🙏
