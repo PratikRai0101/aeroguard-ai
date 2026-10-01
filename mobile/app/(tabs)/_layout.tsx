@@ -26,6 +26,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="validation"
+        options={{
+          title: "Validation",
+          tabBarIcon: ({ focused }) => <TabIcon focused={focused} label="📊" />,
+        }}
+      />
+      <Tabs.Screen
         name="chat"
         options={{
           title: "AI Chat",

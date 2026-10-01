@@ -63,24 +63,30 @@ def process_line(line):
 
 
 def mock_data_generator():
-    """Generate realistic mock sensor data"""
+    """Generate realistic mock sensor data.
+
+    The gas channel simulates the calibrated sensor domain (a metal-oxide
+    response around 400-2000) that the model was trained and calibrated on.
+    This keeps the demo chain coherent: calibrated gas -> predicted AQI.
+    The live MQ-135 needs its own clean-air R0 and reference fit.
+    """
     scenarios = ['healthy', 'rising', 'spike', 'falling']
     idx = 0
     while True:
         scenario = scenarios[idx % 4]
         if scenario == 'healthy':
             for _ in range(15):
-                yield [random.uniform(23, 26), random.uniform(50, 60), random.uniform(100, 180)]
+                yield [random.uniform(23, 26), random.uniform(50, 60), random.uniform(550, 850)]
         elif scenario == 'rising':
-            gas_start = random.uniform(150, 200)
-            for g in np.linspace(gas_start, gas_start + 100, 15):
-                yield [random.uniform(25, 28), random.uniform(55, 65), g + random.uniform(-5, 5)]
+            gas_start = random.uniform(600, 800)
+            for g in np.linspace(gas_start, gas_start + 500, 15):
+                yield [random.uniform(25, 28), random.uniform(55, 65), g + random.uniform(-20, 20)]
         elif scenario == 'spike':
-            for g in np.concatenate([np.linspace(150, 180, 5), np.linspace(200, 350, 5), np.linspace(380, 450, 5)]):
-                yield [random.uniform(27, 30), random.uniform(60, 70), g + random.uniform(-10, 10)]
+            for g in np.concatenate([np.linspace(600, 800, 5), np.linspace(900, 1400, 5), np.linspace(1500, 2000, 5)]):
+                yield [random.uniform(27, 30), random.uniform(60, 70), g + random.uniform(-30, 30)]
         elif scenario == 'falling':
-            for g in np.linspace(400, 120, 15):
-                yield [random.uniform(24, 26), random.uniform(50, 55), g + random.uniform(-10, 10)]
+            for g in np.linspace(1800, 600, 15):
+                yield [random.uniform(24, 26), random.uniform(50, 55), g + random.uniform(-30, 30)]
         idx += 1
 
 

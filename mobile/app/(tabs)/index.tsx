@@ -10,6 +10,57 @@ import {
 } from "react-native";
 import { getStats, getReadings, DashboardStats, Reading } from "../../lib/api";
 
+function aqiColor(aqi: number): string {
+  if (aqi <= 50) return "#00E400";
+  if (aqi <= 100) return "#FFFF00";
+  if (aqi <= 200) return "#FF7E00";
+  if (aqi <= 300) return "#FF0000";
+  if (aqi <= 400) return "#8F3F97";
+  return "#7E0023";
+}
+
+function riskColor(level?: string): string {
+  if (level === "High") return "#d32f2f";
+  if (level === "Moderate") return "#f57c00";
+  return "#2e7d32";
+}
+
+function reliabilityColor(label?: string): string {
+  if (label === "High") return "#2e7d32";
+  if (label === "Moderate") return "#f57c00";
+  return "#d32f2f";
+}
+
+function trendLabel(trend: string): string {
+  if (trend === "rising") return "📈 Rising";
+  if (trend === "falling") return "📉 Falling";
+  return "➡️ Stable";
+}
+
+function HistoryChart({ readings }: { readings: Reading[] }) {
+  const data = readings.slice(-12);
+  const max = Math.max(...data.map((reading) => reading.aqi), 1);
+
+  return (
+    <View style={styles.chartRow}>
+      {data.map((reading, index) => (
+        <View key={index} style={styles.chartColumn}>
+          <View
+            style={[
+              styles.chartBar,
+              {
+                height: Math.max(4, (reading.aqi / max) * 80),
+                backgroundColor: aqiColor(reading.aqi),
+              },
+            ]}
+          />
+          <Text style={styles.chartLabel}>{Math.round(reading.aqi)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [readings, setReadings] = useState<Reading[]>([]);
@@ -65,6 +116,10 @@ export default function DashboardScreen() {
     );
   }
 
+  const reliability = stats?.reliability;
+  const risk = stats?.risk;
+  const explanation = stats?.explanation;
+
   return (
     <ScrollView
       style={styles.container}
@@ -90,6 +145,72 @@ export default function DashboardScreen() {
             <Text style={styles.adviceText}>{stats.advice}</Text>
           </View>
 
+          {reliability && (
+            <View style={styles.card}>
+              <Text style={styles.label}>Prediction Reliability</Text>
+              <View style={styles.badgeRow}>
+                <View
+                  style={[
+                    styles.badge,
+                    { backgroundColor: reliabilityColor(reliability.label) },
+                  ]}
+                >
+                  <Text style={styles.badgeText}>{reliability.label}</Text>
+                </View>
+              </View>
+              <Text style={styles.adviceText}>
+                Category probability {(reliability.category_probability * 100).toFixed(0)}% ·
+                80% range {reliability.interval.low}–{reliability.interval.high}
+              </Text>
+              {stats.sensor_aqi !== undefined && (
+                <Text style={styles.adviceText}>
+                  Sensor estimate: AQI {stats.sensor_aqi}
+                </Text>
+              )}
+              {stats.future_prediction?.label &&
+                stats.future_prediction.label !== "Buffer filling..." && (
+                  <Text style={styles.adviceText}>
+                    Next window: {stats.future_prediction.label}
+                  </Text>
+                )}
+            </View>
+          )}
+
+          {risk && (
+            <View style={[styles.card, { borderLeftColor: riskColor(risk.level) }]}>
+              <Text style={styles.label}>Airborne Disease Risk</Text>
+              <View style={styles.badgeRow}>
+                <View style={[styles.badge, { backgroundColor: riskColor(risk.level) }]}>
+                  <Text style={styles.badgeText}>{risk.level}</Text>
+                </View>
+              </View>
+              {risk.factors.map((factor, index) => (
+                <Text key={index} style={styles.bulletPoint}>
+                  • {factor}
+                </Text>
+              ))}
+              <Text style={styles.adviceText}>{risk.advisory}</Text>
+              <Text style={styles.disclaimerText}>{risk.disclaimer}</Text>
+            </View>
+          )}
+
+          {explanation && explanation.top_factors?.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.label}>Why this prediction?</Text>
+              <Text style={styles.adviceText}>
+                Top contributing factors ({explanation.method}):
+              </Text>
+              {explanation.top_factors.map((factor, index) => (
+                <Text key={index} style={styles.factorText}>
+                  {factor.direction === "increases" ? "▲" : "▼"}{" "}
+                  {factor.description} = {factor.value}
+                  {factor.unit} ({factor.contribution > 0 ? "+" : ""}
+                  {factor.contribution.toFixed(3)})
+                </Text>
+              ))}
+            </View>
+          )}
+
           <View style={styles.row}>
             <View style={[styles.card, styles.smallCard]}>
               <Text style={styles.label}>Temperature</Text>
@@ -114,10 +235,15 @@ export default function DashboardScreen() {
 
           <View style={styles.card}>
             <Text style={styles.label}>Trend</Text>
-            <Text style={styles.metricValue}>
-              {stats.trend === "rising" ? "📈 Rising" : stats.trend === "falling" ? "📉 Falling" : "➡️ Stable"}
-            </Text>
+            <Text style={styles.metricValue}>{trendLabel(stats.trend)}</Text>
           </View>
+
+          {readings.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.label}>AQI History (last {Math.min(12, readings.length)})</Text>
+              <HistoryChart readings={readings} />
+            </View>
+          )}
 
           {stats.outdoor_aqi !== null && stats.outdoor_aqi !== undefined && (
             <View style={styles.card}>
@@ -250,9 +376,55 @@ const styles = StyleSheet.create({
     color: "#555",
     marginTop: 4,
   },
+  factorText: {
+    fontSize: 14,
+    color: "#333",
+    marginTop: 4,
+  },
+  disclaimerText: {
+    fontSize: 11,
+    color: "#999",
+    marginTop: 8,
+    fontStyle: "italic",
+  },
   readingText: {
     fontSize: 13,
     color: "#666",
     marginTop: 3,
+  },
+  badgeRow: {
+    flexDirection: "row",
+    marginTop: 6,
+  },
+  badge: {
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  chartRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginTop: 12,
+    height: 100,
+  },
+  chartColumn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  chartBar: {
+    width: "70%",
+    borderRadius: 3,
+  },
+  chartLabel: {
+    fontSize: 9,
+    color: "#888",
+    marginTop: 2,
   },
 });

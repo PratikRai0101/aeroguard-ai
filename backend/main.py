@@ -84,17 +84,24 @@ def get_latest_stats() -> Dict[str, Any]:
     if recent:
         row = recent[0]
         time, temp, hum, gas, aqi, status, source = row
-        aqi_info = get_aqi_info(aqi)
-        alert = get_alert(aqi)
-        measures = get_preventive_measures(aqi)
-
-        trend = "stable"
+        assessment = None
         if predictor:
-            pred = predictor.predict_trend_lr(temp, hum, gas)
-            trend = pred.get("trend", "stable")
+            # Chronological history for the LSTM window (stateless, no buffer mutation).
+            history = db.get_recent_readings(limit=10, include_source=False)
+            history_rows = [(row[1], row[2], row[3]) for row in reversed(history)]
+            assessment = predictor.assess(temp, hum, gas, history_rows)
 
-        return {
-            "aqi": round(aqi, 1),
+        # The system's air-quality value is the model prediction when available.
+        # The raw gas-derived estimate is kept separately as sensor_aqi.
+        display_aqi = assessment["trend"]["aqi"] if assessment else aqi
+        aqi_info = get_aqi_info(display_aqi)
+        alert = get_alert(display_aqi)
+        measures = get_preventive_measures(display_aqi)
+        trend = assessment["trend"]["trend"] if assessment else "stable"
+
+        result = {
+            "aqi": round(display_aqi, 1),
+            "sensor_aqi": round(aqi, 1),
             "status": aqi_info["name"],
             "category": aqi_info["category"],
             "color": aqi_info["color"],
@@ -112,6 +119,18 @@ def get_latest_stats() -> Dict[str, Any]:
             "total_alerts": stats.get("alerts", 0),
             "last_updated": time,
         }
+
+        if assessment:
+            result.update({
+                "prediction": assessment["current"],
+                "future_prediction": assessment["future"],
+                "predicted_aqi": assessment["trend"]["aqi"],
+                "reliability": assessment["reliability"],
+                "risk": assessment["risk"],
+                "explanation": assessment["explanation"],
+            })
+
+        return result
 
     return {
         "aqi": 0,
@@ -197,6 +216,28 @@ def api_alerts(limit: int = 10):
 class ChatRequest(BaseModel):
     question: str
     history: List[Dict[str, str]] = []
+
+
+@app.get("/api/validation")
+def api_validation():
+    """Return the trained model validation report (MAE, RMSE, r, category agreement)."""
+    import json
+
+    metadata_path = PROJECT_ROOT / 'model_metadata.json'
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except Exception:
+        raise HTTPException(status_code=404, detail="No validation metadata available")
+
+    return {
+        "dataset": metadata.get("dataset"),
+        "dataset_source": metadata.get("dataset_source"),
+        "calibration": metadata.get("calibration"),
+        "rf": metadata.get("rf"),
+        "lr": metadata.get("lr"),
+        "lstm": metadata.get("lstm"),
+        "notes": metadata.get("notes"),
+    }
 
 
 @app.post("/api/chat")

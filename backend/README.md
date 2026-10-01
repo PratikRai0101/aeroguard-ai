@@ -8,10 +8,11 @@ FastAPI backend that exposes the existing AeroGuard AI engine to the React Nativ
 |--------|----------|-------------|
 | GET | `/` | API info |
 | GET | `/health` | Health check + Ollama status |
-| GET | `/api/stats` | Current AQI, temp, humidity, gas, trend, outdoor AQI |
+| GET | `/api/stats` | AQI prediction, reliability, airborne risk, SHAP explanation, readings, outdoor AQI |
 | GET | `/api/readings?limit=50` | Recent sensor readings |
 | GET | `/api/alerts?limit=10` | Recent critical alerts |
-| POST | `/api/chat` | Ask the SLM about dashboard data |
+| GET | `/api/validation` | Model validation vs certified reference (MAE, RMSE, r, category agreement) |
+| POST | `/api/chat` | Ask the SLM to explain the prediction, risk and readings |
 | POST | `/api/model/pull` | Pull the configured SLM |
 
 ## One-run setup (Windows / macOS / Linux)

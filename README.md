@@ -393,12 +393,14 @@ Backend (Phase 2)
 │   ├── requirements.txt
 │   └── README.md
 
-Mobile App (Phase 2)
+Mobile App (Phase 2 + 4)
 ├── mobile/
 │   ├── app/
 │   │   ├── (tabs)/
-│   │   │   ├── index.tsx
-│   │   │   └── chat.tsx
+│   │   │   ├── index.tsx       # prediction, reliability, risk, SHAP, history
+│   │   │   ├── validation.tsx  # validation vs certified reference
+│   │   │   ├── chat.tsx        # AI chat
+│   │   │   └── _layout.tsx
 │   │   └── _layout.tsx
 │   ├── lib/api.ts
 │   └── README.md
@@ -470,6 +472,23 @@ This single script will:
    npm install
    npx expo start
    ```
+
+### Phase 4 additions
+
+The dashboard now surfaces the full result, not just the AQI number:
+
+- **Prediction reliability** — category probability and an 80% interval,
+  derived from validated error (`reliability.py`), not an invented confidence.
+- **Airborne disease risk** — Low / Moderate / High with contributing factors
+  and an advisory. Environmental indicator, not a medical diagnosis.
+- **"Why this prediction?"** — the top SHAP contributing factors.
+- **AQI history chart** — the last 12 readings, colour-coded by category.
+- **Validation tab** — MAE, RMSE, R², correlation, category agreement and the
+  confusion matrix against the certified reference.
+
+The AI chat now receives the prediction, reliability, risk level and SHAP
+factors in its context, so it **explains** the ML result rather than inventing
+one.
 
 ---
 

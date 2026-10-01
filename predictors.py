@@ -298,12 +298,43 @@ class AQIPredictor:
             self.explainer = ModelExplainer(self.rf_model, self.feature_cols)
         return self.explainer.explain(X.values, predicted, top_k=top_k)
 
-    def predict_all(self, temp, hum, gas):
-        """Run all models and return a combined result."""
-        current = self.predict_current(temp, hum, gas)
-        future = self.predict_future_lstm()
-        trend = self.predict_trend_lr(temp, hum, gas)
+    def predict_future_from(self, rows):
+        """
+        Predict the next status from an explicit list of raw readings.
 
+        ``rows`` is a chronological list of ``(temp, hum, gas)`` tuples. This
+        is the stateless counterpart of :meth:`predict_future_lstm`; it does
+        not touch the internal buffer, so API callers can poll safely.
+        """
+        if self.lstm_model is None or self.scaler is None:
+            return {'status': None, 'label': 'Moderate', 'confidence': 0,
+                    'error': 'LSTM or scaler not loaded'}
+
+        window = self.buffer.maxlen
+        if len(rows) < window:
+            return {'status': None, 'label': 'Buffer filling...', 'confidence': 0}
+
+        recent = rows[-window:]
+        calibrated = [
+            [float(temp), float(hum), self._calibrate_gas(temp, hum, gas)]
+            for temp, hum, gas in recent
+        ]
+        arr = np.array(calibrated, dtype=float)
+
+        try:
+            arr_scaled = self.scaler.transform(arr).reshape(1, window, arr.shape[1])
+            probs = self.lstm_model.predict(arr_scaled, verbose=0)[0]
+            predicted = int(np.argmax(probs))
+            return {
+                'status': predicted,
+                'label': label_for(predicted),
+                'confidence': float(probs[predicted]) * 100,
+            }
+        except Exception as exc:
+            return {'status': None, 'label': 'Error', 'confidence': 0, 'error': str(exc)}
+
+    def _compose_assessment(self, temp, hum, gas, current, future, trend):
+        """Add reliability, risk and SHAP explanation to model outputs."""
         reliability_report = None
         if self.residual_std:
             reliability_report = reliability.assess(trend['aqi'], self.residual_std)
@@ -316,19 +347,48 @@ class AQIPredictor:
             reliability=reliability_report,
         )
 
-        explanation = self.explain_current(temp, hum, gas)
-
-        self.add_reading(temp, hum, gas)
-
         return {
             'current': current,
             'future': future,
             'trend': trend,
             'reliability': reliability_report,
             'risk': risk_report,
-            'explanation': explanation,
-            'buffer_size': len(self.buffer),
+            'explanation': self.explain_current(temp, hum, gas),
         }
+
+    def predict_all(self, temp, hum, gas):
+        """Run all models (stateful streaming variant) and return a result."""
+        current = self.predict_current(temp, hum, gas)
+        future = self.predict_future_lstm()
+        trend = self.predict_trend_lr(temp, hum, gas)
+
+        result = self._compose_assessment(temp, hum, gas, current, future, trend)
+
+        self.add_reading(temp, hum, gas)
+        result['buffer_size'] = len(self.buffer)
+        return result
+
+    def assess(self, temp, hum, gas, history_rows=None):
+        """
+        Stateless full assessment, for API callers that poll.
+
+        Parameters
+        ----------
+        temp, hum, gas : float
+            The latest reading.
+        history_rows : list[tuple], optional
+            Chronological ``(temp, hum, gas)`` rows used for the LSTM window.
+
+        Returns the same keys as :meth:`predict_all`, without mutating state.
+        """
+        history_rows = list(history_rows or [])
+        current = self.predict_current(temp, hum, gas)
+        trend = self.predict_trend_lr(temp, hum, gas)
+        future = self.predict_future_from(history_rows + [(temp, hum, gas)])
+
+        result = self._compose_assessment(temp, hum, gas, current, future, trend)
+        result['buffer_size'] = len(history_rows) + 1
+        return result
 
 
 def create_predictor(model_dir='.'):

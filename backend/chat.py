@@ -14,6 +14,12 @@ Use ONLY the data provided below to answer the user's question.
 If the data is not enough to answer, say so and suggest what the user should check.
 Keep answers concise, clear, and helpful. Use Celsius for temperature, percent for humidity, and AQI for air quality.
 
+Role:
+- The ML models and the risk module produce the prediction, the reliability measure and the risk level. Your job is to explain those results in plain language and answer questions about them.
+- Never invent a different prediction, reliability value or risk level than the one in the context below.
+- The risk level is an environmental indicator, not a medical diagnosis. Say so if the user asks about disease or personal health.
+- When asked "why" a prediction or risk level was produced, use the SHAP contributing factors in the context.
+
 Scope rules:
 - Answer only questions about air quality, AQI, sensors, readings, trends, alerts, outdoor conditions, or health guidance related to these readings.
 - If the user asks for unrelated content such as programming code, general knowledge, jokes, or creative writing, do not answer that request. Say: "I can only help with AeroGuard air-quality data and related health guidance."
@@ -36,6 +42,47 @@ def build_context(stats: Dict[str, Any], recent_readings: List[Dict[str, Any]]) 
     lines.append(f"- Outdoor AQI: {stats.get('outdoor_aqi', 'N/A')}")
     lines.append(f"- Total readings stored: {stats.get('total_readings', 'N/A')}")
     lines.append(f"- Total alerts: {stats.get('total_alerts', 'N/A')}")
+
+    prediction = stats.get('prediction') or {}
+    if prediction:
+        confidence = prediction.get('confidence')
+        confidence_text = f"{confidence:.0f}%" if isinstance(confidence, (int, float)) else "N/A"
+        lines.append(
+            f"- ML predicted category: {prediction.get('label', 'N/A')} "
+            f"(class probability {confidence_text})"
+        )
+    if stats.get('predicted_aqi') is not None:
+        lines.append(f"- Predicted AQI (trend model): {stats.get('predicted_aqi')}")
+
+    reliability = stats.get('reliability') or {}
+    if reliability:
+        interval = reliability.get('interval') or {}
+        lines.append(
+            f"- Prediction reliability: {reliability.get('label', 'N/A')} "
+            f"(category probability {reliability.get('category_probability', 'N/A')}; "
+            f"80% interval {interval.get('low', '?')}-{interval.get('high', '?')})"
+        )
+
+    risk = stats.get('risk') or {}
+    if risk:
+        lines.append(
+            f"- Airborne disease risk: {risk.get('level', 'N/A')} "
+            f"(score {risk.get('score', 'N/A')})"
+        )
+        for factor in risk.get('factors', [])[:4]:
+            lines.append(f"    * {factor}")
+        lines.append(f"- Risk advisory: {risk.get('advisory', 'N/A')}")
+        lines.append(f"- Note: {risk.get('disclaimer', '')}")
+
+    explanation = stats.get('explanation') or {}
+    if explanation.get('top_factors'):
+        lines.append("- Main contributing factors to the prediction (SHAP):")
+        for factor in explanation['top_factors'][:3]:
+            lines.append(
+                f"    * {factor.get('description', factor.get('feature'))} = "
+                f"{factor.get('value')}{factor.get('unit', '')} "
+                f"({factor.get('direction')}, contribution {factor.get('contribution')})"
+            )
 
     if recent_readings:
         lines.append("- Last few readings:")

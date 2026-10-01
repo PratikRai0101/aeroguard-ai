@@ -476,7 +476,7 @@ if t is None:
         if 'mock_t' not in st.session_state:
             st.session_state.mock_t = 24.0
             st.session_state.mock_h = 55.0
-            st.session_state.mock_g = 150.0
+            st.session_state.mock_g = 700.0
             st.session_state.mock_counter = 0
             st.session_state.mock_scenario = 'healthy'
         
@@ -498,25 +498,25 @@ if t is None:
             # Gradually drift back to baseline
             st.session_state.mock_t = st.session_state.mock_t * 0.95 + 24.5 * 0.05
             st.session_state.mock_h = st.session_state.mock_h * 0.95 + 55 * 0.05
-            st.session_state.mock_g = st.session_state.mock_g * 0.95 + 150 * 0.05
+            st.session_state.mock_g = st.session_state.mock_g * 0.95 + 700 * 0.05
         elif scenario == 'rising':
             # Slowly increasing
-            st.session_state.mock_g += random.uniform(0, 3)
+            st.session_state.mock_g += random.uniform(0, 12)
             st.session_state.mock_t += random.uniform(0, 0.2)
             t = st.session_state.mock_t + random.uniform(-0.2, 0.2)
             h = st.session_state.mock_h + random.uniform(-0.5, 0.5)
             g = st.session_state.mock_g + random.uniform(-3, 3)
         elif scenario == 'spike':
             # Sudden jump
-            if st.session_state.mock_g < 300:
-                st.session_state.mock_g += random.uniform(10, 20)
+            if st.session_state.mock_g < 1500:
+                st.session_state.mock_g += random.uniform(40, 80)
             t = st.session_state.mock_t + random.uniform(-0.2, 0.2)
             h = st.session_state.mock_h + random.uniform(-0.5, 0.5)
             g = st.session_state.mock_g + random.uniform(-5, 5)
         else:  # falling
             # Slowly decreasing
-            if st.session_state.mock_g > 100:
-                st.session_state.mock_g -= random.uniform(3, 6)
+            if st.session_state.mock_g > 500:
+                st.session_state.mock_g -= random.uniform(15, 30)
             st.session_state.mock_t = st.session_state.mock_t * 0.98 + 24.5 * 0.02
             t = st.session_state.mock_t + random.uniform(-0.2, 0.2)
             h = st.session_state.mock_h + random.uniform(-0.5, 0.5)
@@ -525,7 +525,7 @@ if t is None:
         # Clamp realistic ranges
         t = max(15, min(45, t))
         h = max(20, min(90, h))
-        g = max(50, min(500, g))
+        g = max(300, min(2200, g))
         
         reading_valid = True
         using_mock_data = True
