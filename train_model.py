@@ -2,14 +2,13 @@
 """
 Train the Random Forest (classification) and Linear Regression (trend) models.
 
-Improvements over the previous version
---------------------------------------
-* Training data is cleaned by ``preprocessing.preprocess_dataframe`` — the
-  same pipeline used at inference.
-* PM2.5 is no longer a feature (the sensor node cannot measure it).
-* The split is chronological, not random, so the test set is genuinely
-  unseen future data instead of a shuffled sample.
-* Metrics and feature schema are written to ``model_metadata.json``.
+Pipeline
+--------
+    dataset -> chronological split -> gas calibration -> preprocessing
+            -> train -> validate against reference -> metadata
+
+The target is the VOC air-quality sub-index (benzene-equivalent), which is
+what the MQ-135-class sensor can actually measure. See dataset.py.
 """
 
 import json
@@ -17,77 +16,73 @@ from datetime import datetime
 
 import joblib
 import numpy as np
-import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    mean_absolute_error,
-    mean_squared_error,
-    r2_score,
-)
+from sklearn.metrics import accuracy_score, classification_report
 
 from preprocessing import AQI_LABELS, FEATURE_COLS, preprocess_dataframe
+from training import (
+    build_metadata,
+    chronological_split,
+    fit_and_apply_calibration,
+    prepare_dataset,
+)
+from validation import format_report, validate_against_reference
 
-DATA_FILE = 'real_air_data.csv'
 METADATA_FILE = 'model_metadata.json'
 TRAIN_FRACTION = 0.8
 
-print("=" * 55)
-print("Training ML Models on Real Data")
-print("=" * 55)
+print("=" * 60)
+print("Training ML Models")
+print("=" * 60)
 
-# 1. Load and clean -----------------------------------------------------
-print("\n[1] Loading real air quality data...")
-df = pd.read_csv(DATA_FILE)
-print(f"    Loaded {len(df)} records")
+# 1. Dataset -------------------------------------------------------------
+print("\n[1] Loading dataset...")
+frame, source_name = prepare_dataset()
+print(f"    Source: {source_name} | rows: {len(frame)}")
+print(f"    Range: {frame['timestamp'].min()} -> {frame['timestamp'].max()}")
 
-df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-df = df.sort_values('timestamp').reset_index(drop=True)
+# 2. Split + calibration -------------------------------------------------
+print("\n[2] Chronological split + gas calibration...")
+train, test = chronological_split(frame, TRAIN_FRACTION)
+train, test, calibrator = fit_and_apply_calibration(train, test, source_name)
 
-df, report = preprocess_dataframe(df, feature_cols=FEATURE_COLS)
-print(f"    After preprocessing: {report['rows_out']} records")
-print(f"    Out-of-range values corrected: {report['out_of_range_values']}")
-if report['constant_features']:
-    print(f"    WARNING constant features (no information): {report['constant_features']}")
+if calibrator is not None:
+    metrics = calibrator.metrics
+    print(f"    Calibration R2(log): {metrics['r2_log']:.4f} | "
+          f"RMSE: {metrics['rmse']:.3f} | MAE: {metrics['mae']:.3f}")
+else:
+    print("    No reference target: using raw gas (legacy dataset)")
 
-# 2. Chronological split -------------------------------------------------
-print("\n[2] Splitting chronologically (no shuffling)...")
-split = int(len(df) * TRAIN_FRACTION)
-train, test = df.iloc[:split], df.iloc[split:]
+# 3. Preprocess ----------------------------------------------------------
+train, train_report = preprocess_dataframe(train, feature_cols=FEATURE_COLS)
+test, test_report = preprocess_dataframe(test, feature_cols=FEATURE_COLS)
+print(f"    Train rows: {len(train)} | Test rows: {len(test)}")
+if train_report['constant_features']:
+    print(f"    WARNING constant features: {train_report['constant_features']}")
 
 X_train, X_test = train[FEATURE_COLS], test[FEATURE_COLS]
-y_status_train, y_status_test = train['status'].astype(int), test['status'].astype(int)
+y_status_train = train['status'].astype(int)
+y_status_test = test['status'].astype(int)
 y_aqi_train, y_aqi_test = train['aqi'], test['aqi']
 
-print(f"    Train: {len(train)} rows ({train['timestamp'].min()} -> {train['timestamp'].max()})")
-print(f"    Test:  {len(test)} rows ({test['timestamp'].min()} -> {test['timestamp'].max()})")
-
-# 3. Random Forest -------------------------------------------------------
+# 4. Random Forest -------------------------------------------------------
 print("\n[3] Training Random Forest classifier...")
 rf_model = RandomForestClassifier(
-    n_estimators=200,
-    max_depth=15,
-    min_samples_split=5,
-    min_samples_leaf=2,
-    random_state=42,
-    n_jobs=-1,
+    n_estimators=200, max_depth=15, min_samples_split=5,
+    min_samples_leaf=2, random_state=42, n_jobs=-1,
 )
 rf_model.fit(X_train, y_status_train)
-
 y_pred = rf_model.predict(X_test)
 accuracy = accuracy_score(y_status_test, y_pred)
 print(f"    Accuracy: {accuracy * 100:.2f}%")
 
 present = sorted(set(y_status_test).union(set(y_pred)))
 target_names = [AQI_LABELS.get(int(label), str(label)) for label in present]
-print("\n    Classification report:")
 print(classification_report(
     y_status_test, y_pred, labels=present,
     target_names=target_names, zero_division=0,
 ))
-
 print("    Feature importance:")
 for feature, importance in zip(FEATURE_COLS, rf_model.feature_importances_):
     print(f"      {feature}: {importance * 100:.1f}%")
@@ -95,25 +90,19 @@ for feature, importance in zip(FEATURE_COLS, rf_model.feature_importances_):
 joblib.dump(rf_model, 'rf_air_model.pkl')
 print("    Saved: rf_air_model.pkl")
 
-# 4. Linear Regression ---------------------------------------------------
+# 5. Linear Regression ---------------------------------------------------
 print("\n[4] Training Linear Regression for AQI...")
 lr_model = LinearRegression()
 lr_model.fit(X_train, y_aqi_train)
-
-y_aqi_pred = lr_model.predict(X_test)
-mae = mean_absolute_error(y_aqi_test, y_aqi_pred)
-rmse = float(np.sqrt(mean_squared_error(y_aqi_test, y_aqi_pred)))
-r2 = r2_score(y_aqi_test, y_aqi_pred)
-residual_std = float(np.std(y_aqi_test - y_aqi_pred))
-
-print(f"    MAE:  {mae:.2f}")
-print(f"    RMSE: {rmse:.2f}")
-print(f"    R²:   {r2:.4f}")
+lr_report = validate_against_reference(
+    y_aqi_test, lr_model.predict(X_test), 'LinearRegression'
+)
+print(format_report(lr_report))
 
 joblib.dump(lr_model, 'lr_trend_model.pkl')
 print("    Saved: lr_trend_model.pkl")
 
-# 5. Write metadata ------------------------------------------------------
+# 6. Metadata ------------------------------------------------------------
 metadata = {}
 try:
     with open(METADATA_FILE) as handle:
@@ -121,28 +110,29 @@ try:
 except (OSError, json.JSONDecodeError):
     metadata = {}
 
+# Drop keys from the previous (legacy) dataset so metadata is not stale.
+for stale in ('data_file', 'data_rows', 'preprocessing'):
+    metadata.pop(stale, None)
+
+metadata.update(build_metadata(frame, source_name, calibrator))
 metadata.update({
-    'feature_cols': list(FEATURE_COLS),
-    'labels': {str(k): v for k, v in AQI_LABELS.items()},
     'trained_at': datetime.now().isoformat(timespec='seconds'),
-    'data_file': DATA_FILE,
-    'data_rows': int(len(df)),
-    'preprocessing': report,
+    'labels': {str(k): v for k, v in AQI_LABELS.items()},
     'rf': {
         'accuracy': float(accuracy),
         'classes': [int(c) for c in rf_model.classes_],
     },
     'lr': {
-        'mae': float(mae),
-        'rmse': rmse,
-        'r2': float(r2),
-        'residual_std': residual_std,
+        'metrics': lr_report['regression'],
+        'validation': lr_report,
+        'residual_std': float(np.std(y_aqi_test - lr_model.predict(X_test))),
     },
     'notes': [
-        'PM2.5 is not a model feature: the sensor node cannot measure it.',
+        'Target is the VOC air-quality sub-index (benzene-equivalent), which '
+        'the MQ-135-class sensor can measure; the NO2-driven composite AQI is '
+        'not physically measurable with this hardware.',
+        'Gas feature is a calibrated VOC concentration, not a raw ADC value.',
         'Split is chronological; the test set is unseen future data.',
-        'The gas feature in real_air_data.csv is synthetic (see collect_real_data.py).',
-        'Phase 2 will replace synthetic gas with calibrated MQ-135 readings.',
     ],
 })
 
@@ -150,7 +140,9 @@ with open(METADATA_FILE, 'w') as handle:
     json.dump(metadata, handle, indent=2)
 print(f"\n[5] Saved metadata: {METADATA_FILE}")
 
-print("\n" + "=" * 55)
-print("Training complete.")
-print(f"RF accuracy: {accuracy * 100:.1f}% | LR RMSE: {rmse:.2f} | R²: {r2:.3f}")
-print("=" * 55)
+print("\n" + "=" * 60)
+print(f"RF accuracy: {accuracy * 100:.1f}% | "
+      f"LR MAE: {lr_report['regression']['mae']:.2f} | "
+      f"RMSE: {lr_report['regression']['rmse']:.2f} | "
+      f"R2: {lr_report['regression']['r2']:.3f}")
+print("=" * 60)

@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover - tensorflow is optional
 import pandas as pd
 import joblib
 
+from calibration import GasCalibrator
 from preprocessing import (
     AQI_LABELS,
     FEATURE_COLS,
@@ -52,6 +53,7 @@ class AQIPredictor:
         self.lr_model = None
         self.lstm_model = None
         self.scaler = None
+        self.calibrator = None
         self.buffer = deque(maxlen=10)
 
         # Defaults; overridden by model_metadata.json when present.
@@ -115,13 +117,30 @@ class AQIPredictor:
         except Exception as exc:
             print(f"  ✗ Scaler load error: {exc}")
 
+        try:
+            self.calibrator = GasCalibrator.load(f'{self.model_dir}/gas_calibrator.pkl')
+            print("  ✓ Gas calibrator loaded")
+        except Exception:
+            self.calibrator = None
+            print("  • No gas calibrator found (raw gas will be used)")
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _calibrate_gas(self, temp, hum, gas):
+        """Apply the fitted gas calibration (raw response -> VOC concentration)."""
+        if self.calibrator is not None and self.calibrator.is_fitted():
+            try:
+                return float(self.calibrator.transform(gas, temp, hum)[0])
+            except Exception:
+                return float(gas)
+        return float(gas)
+
     def _features(self, temp, hum, gas):
-        """Validate a reading and build a model-ready feature frame."""
+        """Validate a reading, calibrate the gas channel, build a feature frame."""
+        calibrated_gas = self._calibrate_gas(temp, hum, gas)
         frame, errors = features_from_reading(
-            temp, hum, gas, feature_cols=self.feature_cols
+            temp, hum, calibrated_gas, feature_cols=self.feature_cols
         )
         return frame, errors
 
@@ -135,12 +154,13 @@ class AQIPredictor:
         return expected is None or expected == len(self.feature_cols)
 
     def add_reading(self, temp, hum, gas):
-        """Append a reading to the time-series buffer."""
+        """Append a reading to the time-series buffer (calibrated gas)."""
+        calibrated_gas = self._calibrate_gas(temp, hum, gas)
         frame, _ = features_from_reading(
-            temp, hum, gas, feature_cols=self.feature_cols
+            temp, hum, calibrated_gas, feature_cols=self.feature_cols
         )
         if frame is not None:
-            self.buffer.append([float(temp), float(hum), float(gas)])
+            self.buffer.append([float(temp), float(hum), calibrated_gas])
 
     def reset(self):
         """Clear the time-series buffer."""

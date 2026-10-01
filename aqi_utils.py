@@ -23,7 +23,34 @@ AQI_BREAKPOINTS = {
         (254, 354, 201, 300),
         (354, 424, 301, 400),
         (424, 604, 401, 500),
-    ]
+    ],
+    # CPCB sub-index breakpoints for gaseous pollutants. Used to build a
+    # reference AQI from certified-analyzer data (e.g. the UCI dataset).
+    # Units: CO mg/m^3, NO2 ug/m^3, C6H6 ug/m^3.
+    'co': [
+        (0, 1, 0, 50),
+        (1, 2, 51, 100),
+        (2, 10, 101, 200),
+        (10, 17, 201, 300),
+        (17, 34, 301, 400),
+        (34, 100, 401, 500),
+    ],
+    'no2': [
+        (0, 40, 0, 50),
+        (40, 80, 51, 100),
+        (80, 180, 101, 200),
+        (180, 280, 201, 300),
+        (280, 400, 301, 400),
+        (400, 1000, 401, 500),
+    ],
+    'c6h6': [
+        (0, 5, 0, 50),
+        (5, 10, 51, 100),
+        (10, 20, 101, 200),
+        (20, 30, 201, 300),
+        (30, 50, 301, 400),
+        (50, 200, 401, 500),
+    ],
 }
 
 # AQI Categories
@@ -70,6 +97,42 @@ def calculate_aqi(pm25=None, pm10=None):
         return 0
     
     return max(aqi_values)
+
+
+def calculate_composite_aqi(concentrations, return_details=False):
+    """
+    Composite CPCB AQI: the worst sub-index across the supplied pollutants.
+
+    Parameters
+    ----------
+    concentrations : dict[str, float]
+        Pollutant key -> concentration, e.g. ``{'co': 2.1, 'no2': 113, 'c6h6': 10.1}``.
+        Keys must exist in :data:`AQI_BREAKPOINTS`.
+    return_details : bool
+        When True, also return the per-pollutant sub-index dict.
+
+    Returns
+    -------
+    float or (float, dict)
+    """
+    sub_indices = {}
+
+    for pollutant, value in concentrations.items():
+        if pollutant not in AQI_BREAKPOINTS or value is None:
+            continue
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(numeric) or numeric < 0:
+            continue
+        sub_indices[pollutant] = calculate_aqi_from_concentration(numeric, pollutant)
+
+    if not sub_indices:
+        return (0.0, {}) if return_details else 0.0
+
+    worst = max(sub_indices.values())
+    return (worst, sub_indices) if return_details else worst
 
 
 def get_aqi_category(aqi):

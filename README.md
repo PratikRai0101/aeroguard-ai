@@ -239,6 +239,30 @@ define label maps elsewhere.
   not a validated reliability measure — a statistically justified reliability
   indicator is a later phase.
 
+### Dataset, calibration & validation
+
+Training uses the **UCI Air Quality dataset** (De Vito et al., 2008): 9,357
+hourly records from a metal-oxide sensor array co-located with a certified
+reference analyzer. Fetch it with `python fetch_datasets.py`.
+
+* The gas channel is **calibrated** (`calibration.py`) against reference
+  benzene with temperature/humidity compensation. Calibration R² = 0.985,
+  MAE = 0.73 µg/m³. The model feature is a benzene-equivalent VOC
+  concentration, not a raw ADC value.
+* The predicted target is the **VOC air-quality sub-index** (benzene
+  sub-index). The NO₂-driven composite AQI is not physically measurable with
+  an MQ-135-class sensor (r = 0.09 with NO₂), so it is kept only as a
+  reference column (`aqi_composite`).
+* `validation.py` reports MAE, RMSE, R², Pearson r and AQI-category
+  agreement against the certified reference. Current held-out results:
+  RF 98.4% accuracy, Linear Regression R² 0.969 / r 0.991, category
+  within-one 100%.
+
+> **Live-node caveat:** the UCI calibration coefficients describe the UCI
+> sensor array, not the MQ-135. The live node needs its own clean-air `R0`
+> and a reference gas before deployment. The methodology is complete; only
+> the per-device coefficients are outstanding.
+
 > **Import order (macOS):** `bootstrap_tf.py` must be imported before pandas,
 > streamlit or sklearn in any entry point. On some macOS setups (pandas 3.x +
 > TensorFlow 2.21 on arm64), importing pandas first makes every `fit`/`predict`
@@ -328,11 +352,16 @@ AeroGuard AI/
 │   ├── aqi_utils.py       # AQI calculation + outlier detection
 │   ├── alerts.py         # Health alerts
 │   ├── preprocessing.py  # Cleaning, validation, feature contract
+│   ├── dataset.py        # UCI + legacy dataset loaders, reference AQI
+│   ├── calibration.py    # Gas calibration (log-log + T/RH) + MQ-135 helpers
+│   ├── validation.py     # MAE/RMSE/r/category-agreement vs reference
+│   ├── training.py       # Shared dataset -> split -> calibration pipeline
 │   ├── predictors.py      # ML pipeline
 │   ├── database.py        # SQLite persistence
 │   └── bootstrap_tf.py    # Import-order shim (see note below)
 │
 ├── Scripts/
+│   ├── fetch_datasets.py     # Download the UCI reference dataset
 │   ├── collect_real_data.py  # Fetch real data from API
 │   ├── train_model.py        # Train RF + LR
 │   └── train_lstm.py         # Train LSTM
@@ -350,7 +379,8 @@ AeroGuard AI/
     ├── lr_trend_model.pkl
     ├── lstm_air_model.h5
     ├── scaler.pkl
-    └── model_metadata.json  # feature schema, labels, metrics
+    ├── gas_calibrator.pkl   # fitted gas calibration
+    └── model_metadata.json  # feature schema, labels, metrics, validation
 
 Backend (Phase 2)
 ├── backend/

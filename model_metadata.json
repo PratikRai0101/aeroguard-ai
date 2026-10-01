@@ -12,51 +12,139 @@
     "4": "Severe",
     "5": "Hazardous"
   },
-  "trained_at": "2026-10-02T03:57:47",
-  "data_file": "real_air_data.csv",
-  "data_rows": 768,
-  "preprocessing": {
-    "rows_in": 768,
-    "rows_out": 768,
-    "out_of_range_values": 0,
-    "missing_values_filled": 0,
-    "rows_dropped": 0,
-    "constant_features": [
-      "temp",
-      "hum"
-    ],
-    "smoothing_window": 5
-  },
+  "trained_at": "2026-10-02T04:13:22",
   "rf": {
-    "accuracy": 0.7077922077922078,
+    "accuracy": 0.9844357976653697,
     "classes": [
       0,
       1,
-      2
+      2,
+      3,
+      4,
+      5
     ]
   },
   "lr": {
-    "mae": 20.985983965760052,
-    "rmse": 27.663666837521895,
-    "r2": 0.11790002843503156,
-    "residual_std": 26.832646597616712
+    "metrics": {
+      "n": 1799,
+      "mae": 9.647501571660088,
+      "rmse": 11.455385892614888,
+      "r2": 0.9685783002941912,
+      "pearson": 0.9906678314783544
+    },
+    "validation": {
+      "name": "LinearRegression",
+      "regression": {
+        "n": 1799,
+        "mae": 9.647501571660088,
+        "rmse": 11.455385892614888,
+        "r2": 0.9685783002941912,
+        "pearson": 0.9906678314783544
+      },
+      "categories": {
+        "n": 1799,
+        "exact_match": 0.8988326848249028,
+        "within_one": 1.0,
+        "confusion": [
+          [
+            674,
+            104,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            517,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            55,
+            339,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            22,
+            73,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            14,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    "residual_std": 11.378602562561914
   },
   "notes": [
-    "PM2.5 is not a model feature: the sensor node cannot measure it.",
-    "Split is chronological; the test set is unseen future data.",
-    "The gas feature in real_air_data.csv is synthetic (see collect_real_data.py).",
-    "Phase 2 will replace synthetic gas with calibrated MQ-135 readings."
+    "Target is the VOC air-quality sub-index (benzene-equivalent), which the MQ-135-class sensor can measure; the NO2-driven composite AQI is not physically measurable with this hardware.",
+    "Gas feature is a calibrated VOC concentration, not a raw ADC value.",
+    "Split is chronological; the test set is unseen future data."
   ],
   "lstm": {
     "window": 10,
-    "val_loss": 0.5931166410446167,
-    "val_accuracy": 0.719298243522644,
+    "val_loss": 0.640188455581665,
+    "val_accuracy": 0.7366468906402588,
     "validated_classes": [
       0,
       1,
-      2
+      2,
+      3,
+      4,
+      5
     ],
-    "train_sequences": 644,
-    "val_sequences": 114
+    "train_sequences": 7633,
+    "val_sequences": 1348
+  },
+  "dataset_source": "uci",
+  "dataset": {
+    "rows": 8991,
+    "start": "2004-03-10 18:00:00",
+    "end": "2005-04-04 14:00:00",
+    "has_reference_target": true,
+    "temp_unique": 436,
+    "hum_unique": 753,
+    "aqi_min": 1.0,
+    "aqi_max": 410.04200000000003
+  },
+  "calibration": {
+    "trained_on": "uci:benzene-equivalent",
+    "input_domain": "MQ-135-class metal-oxide response",
+    "metrics": {
+      "n": 7192,
+      "r2_log": 0.9848996781733929,
+      "rmse": 1.674899873994701,
+      "mae": 0.7338526622747162,
+      "coefficients": {
+        "intercept": -17.305968002858556,
+        "log_raw": 2.8315964441237655,
+        "temp": 0.0021746788122239025,
+        "hum": 0.00026717052464398115
+      }
+    },
+    "note": "Calibrated VOC concentration (benzene-equivalent ug/m^3). The live MQ-135 must be re-fitted with a clean-air R0 and a reference gas before deployment; these coefficients describe the UCI sensor array."
   }
 }

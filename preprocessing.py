@@ -80,7 +80,7 @@ def validate_reading(temp, hum, gas):
     return len(errors) == 0, errors
 
 
-def preprocess_dataframe(df, feature_cols=None, smooth_window=5):
+def preprocess_dataframe(df, feature_cols=None, smooth_window=1):
     """
     Clean a dataframe of sensor readings.
 
@@ -90,7 +90,7 @@ def preprocess_dataframe(df, feature_cols=None, smooth_window=5):
     2. Replace physically impossible values with NaN.
     3. Fill missing values by linear interpolation, then ffill/bfill for the
        edges. Rows that remain empty are dropped.
-    4. Smooth remaining noise with a centered rolling median.
+    4. Optionally smooth remaining noise with a centered rolling median.
     5. Detect constant features (a warning sign for the dataset, not a crash).
 
     Parameters
@@ -99,7 +99,11 @@ def preprocess_dataframe(df, feature_cols=None, smooth_window=5):
     feature_cols : list[str], optional
         Defaults to :data:`FEATURE_COLS`.
     smooth_window : int
-        Rolling median window. ``<= 1`` disables smoothing.
+        Rolling median window. ``<= 1`` disables smoothing (the default).
+        Smoothing is off by default because live inference processes one
+        reading at a time and cannot apply a rolling window; smoothing only
+        the training data would introduce train/serve skew. Enable it only if
+        the same smoothing is applied at inference.
 
     Returns
     -------
