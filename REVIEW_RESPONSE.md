@@ -169,10 +169,24 @@ Git history: Phase 1 `3e31bce`, Phase 2 `1d8bf9a`, dataset evaluation
 ## 7. Remaining item (hardware/field, not code)
 
 The model is validated on the UCI reference sensor array. The physical MQ-135
-still needs its own clean-air `R0` and a reference-gas fit before live readings
-are calibrated. The method, code and validation are complete; only the
-per-device coefficients are outstanding. Until then, live predictions are
-indicative and this is stated in the app and in `model_metadata.json`.
+needs its own clean-air `R0` and a reference fit before live readings are
+calibrated.
+
+**The tooling for this is complete and verified:**
+
+* `mq135.py` — ADC → Rs → Rs/R0 → concentration, datasheet coefficients,
+hardware profile.
+* `calibrate_mq135.py` — CLI with `r0`, `fit`, `simulate`, `status`,
+`datasheet`.
+* `MQ135_CALIBRATION.md` — the exact field procedure.
+* `simulate` proves the workflow end to end: a known MQ-135 response is
+recovered with **R² = 1.0000** and the coefficients recovered exactly.
+
+Only the physical measurement is outstanding: pre-heat the sensor, measure
+`R0` in clean air, co-locate with a reference (or use a reference gas), and run
+`fit`. `predictors.py` then uses the fitted calibration automatically. Until
+then, live predictions are indicative and this is stated in the app and in
+`model_metadata.json`.
 
 ---
 

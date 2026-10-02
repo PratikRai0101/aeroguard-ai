@@ -33,6 +33,7 @@ import joblib
 
 from calibration import GasCalibrator
 from explain import SHAP_AVAILABLE, ModelExplainer
+from mq135 import PROFILE_FILE as MQ135_PROFILE_FILE, MQ135Profile
 from preprocessing import (
     AQI_LABELS,
     FEATURE_COLS,
@@ -57,6 +58,7 @@ class AQIPredictor:
         self.lstm_model = None
         self.scaler = None
         self.calibrator = None
+        self.mq135_profile = None
         self.buffer = deque(maxlen=10)
 
         # Defaults; overridden by model_metadata.json when present.
@@ -134,17 +136,31 @@ class AQIPredictor:
             self.calibrator = None
             print("  • No gas calibrator found (raw gas will be used)")
 
+        try:
+            self.mq135_profile = MQ135Profile.load(
+                f'{self.model_dir}/{MQ135_PROFILE_FILE}'
+            )
+            print("  ✓ MQ-135 profile loaded")
+        except Exception:
+            self.mq135_profile = None
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
     def _calibrate_gas(self, temp, hum, gas):
         """Apply the fitted gas calibration (raw response -> VOC concentration)."""
-        if self.calibrator is not None and self.calibrator.is_fitted():
-            try:
-                return float(self.calibrator.transform(gas, temp, hum)[0])
-            except Exception:
-                return float(gas)
-        return float(gas)
+        if self.calibrator is None or not self.calibrator.is_fitted():
+            return float(gas)
+
+        try:
+            raw = float(gas)
+            trained_on = getattr(self.calibrator, 'trained_on', '') or ''
+            if trained_on.startswith('mq135') and self.mq135_profile is not None:
+                # MQ-135 calibrations are fitted on Rs/R0, so convert the ADC.
+                raw = float(self.mq135_profile.ratio(raw))
+            return float(self.calibrator.transform(raw, temp, hum)[0])
+        except Exception:
+            return float(gas)
 
     def _features(self, temp, hum, gas):
         """Validate a reading, calibrate the gas channel, build a feature frame."""

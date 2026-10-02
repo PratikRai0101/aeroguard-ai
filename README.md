@@ -358,6 +358,8 @@ AeroGuard AI/
 │   ├── reliability.py    # Prediction interval + category probability
 │   ├── risk.py           # Airborne disease environmental risk (Low/Mod/High)
 │   ├── explain.py        # SHAP (TreeSHAP) explanations
+│   ├── mq135.py          # MQ-135 ADC->Rs/R0->ppm, datasheet coefficients, profile
+│   ├── serial_utils.py   # Cross-platform serial port auto-detection
 │   ├── training.py       # Shared dataset -> split -> calibration pipeline
 │   ├── predictors.py      # ML pipeline
 │   ├── database.py        # SQLite persistence
@@ -365,6 +367,7 @@ AeroGuard AI/
 │
 ├── Scripts/
 │   ├── fetch_datasets.py     # Download the UCI reference dataset
+│   ├── calibrate_mq135.py    # MQ-135 R0 + reference-fit calibration CLI
 │   ├── collect_real_data.py  # Fetch real data from API
 │   ├── train_model.py        # Train RF + LR
 │   └── train_lstm.py         # Train LSTM
