@@ -21,6 +21,7 @@ from aqi_utils import calculate_aqi, get_aqi_info, validate_reading, OutlierDete
 from alerts import get_alert, get_preventive_measures, get_alert_color
 from predictors import AQIPredictor
 from database import SensorDatabase
+from serial_utils import open_serial
 import yaml
 
 # Load configuration
@@ -103,36 +104,20 @@ if 'serial_port' not in st.session_state:
 # ==== AUTO-DETECT ESP32 ====
 # Try to detect and open serial port
 detected = False
-detected_port = '/dev/ttyUSB0'
+detected_port = None
 
 # Only try to detect if not already connected
 if not st.session_state.serial_connected or st.session_state.serial_port is None:
-    try:
-        # Try the configured port first (for example, macOS /dev/cu.usbserial-*),
-        # then common Linux ESP32 device names.
-        ports_to_try = list(dict.fromkeys([
-            SERIAL_PORT, '/dev/ttyUSB0', '/dev/ttyACM0', '/dev/ttyUSB1'
-        ]))
-        for port in ports_to_try:
-            try:
-                test_ser = serial.Serial(port, BAUD, timeout=0.5)
-                detected_port = port
-                detected = True
-                break
-            except:
-                continue
-    except:
-        detected = False
-    
-    if detected:
-        st.session_state.serial_connected = True
+    ser, detected_port = open_serial(SERIAL_PORT, BAUD, timeout=1)
+    if ser is not None:
         try:
-            st.session_state.serial_port = serial.Serial(detected_port, BAUD, timeout=1)
-            st.session_state.serial_port.flush()
-            st.session_state.serial_port.flushInput()  # Clear stale buffer
-        except:
-            st.session_state.serial_connected = False
-            st.session_state.serial_port = None
+            ser.flush()
+            ser.flushInput()  # Clear stale buffer
+        except Exception:
+            pass
+        st.session_state.serial_connected = True
+        st.session_state.serial_port = ser
+        detected = True
     else:
         st.session_state.serial_connected = False
         st.session_state.serial_port = None
@@ -544,34 +529,42 @@ if t is None:
 if reading_valid:
     curr_time = datetime.now().strftime("%H:%M:%S")
     
-    # Estimate AQI from gas
+    # Sensor-estimate AQI from the raw gas reading (cruder; kept for reference)
     est_pm25 = g * 0.15
-    aqi = calculate_aqi(pm25=est_pm25)
-    aqi_info = get_aqi_info(aqi)
-    
+    sensor_aqi = calculate_aqi(pm25=est_pm25)
+    sensor_info = get_aqi_info(sensor_aqi)
+    aqi = sensor_aqi
+    aqi_info = sensor_info
+
     # ML Predictions
     current_pred = {'label': 'Unknown', 'confidence': 0}
     future_pred = {'label': 'Unknown', 'confidence': 0}
     trend_pred = {'aqi': aqi, 'trend': 'stable'}
-    
+    reliability_pred = {}
+    risk_pred = {}
+    explanation_pred = {}
+
     if predictor:
-        # First add data to buffer
-        predictor.add_reading(t, h, g)
-        
-        # Get predictions
+        # predict_all() adds the reading to the buffer itself.
         ml_result = predictor.predict_all(t, h, g)
         current_pred = ml_result.get('current', {})
         future_pred = ml_result.get('future', {})
         trend_pred = ml_result.get('trend', {})
-        
-        # Debug output
+        reliability_pred = ml_result.get('reliability') or {}
+        risk_pred = ml_result.get('risk') or {}
+        explanation_pred = ml_result.get('explanation') or {}
+
+        # The system's air-quality value is the model prediction.
+        aqi = trend_pred.get('aqi', sensor_aqi)
+        aqi_info = get_aqi_info(aqi)
+
         print(f"[ML] RF={current_pred.get('label')} {current_pred.get('confidence',0):.0f}% | LSTM={future_pred.get('label')} {future_pred.get('confidence',0):.0f}% | Buffer={len(predictor.buffer)}")
-    
+
     # Health Alert
     alert = get_alert(aqi)
-    
-    # Save to database
-    db.add_reading(t, h, g, aqi, aqi_info['name'], source='mock' if using_mock_data else 'sensor')
+
+    # Save to database (reading keeps the raw sensor estimate; prediction keeps risk/reliability)
+    db.add_reading(t, h, g, sensor_aqi, sensor_info['name'], source='mock' if using_mock_data else 'sensor')
     if predictor:
         db.add_prediction(
             current_pred.get('label', 'Unknown'),
@@ -579,7 +572,11 @@ if reading_valid:
             future_pred.get('label', 'Unknown'),
             future_pred.get('confidence', 0),
             trend_pred.get('trend', 'stable'),
-            trend_pred.get('aqi', aqi)
+            trend_pred.get('aqi', aqi),
+            risk_level=risk_pred.get('level'),
+            reliability_label=reliability_pred.get('label'),
+            reliability_probability=reliability_pred.get('category_probability'),
+            explanation=explanation_pred,
         )
     
     if alert['category'] >= 2:
@@ -644,7 +641,48 @@ if reading_valid:
         trend_aqi = trend_pred.get('aqi', aqi)
         emoji = "📈" if trend_dir == "rising" else "📉" if trend_dir == "falling" else "➡️"
         st.metric("Trend (LR)", f"AQI {int(trend_aqi)} {emoji}", trend_dir)
-    
+
+    # ==== RELIABILITY / RISK / EXPLANATION ====
+    if reliability_pred or risk_pred:
+        st.subheader("🎯 Reliability & Airborne Risk")
+        rel_col, risk_col = st.columns(2)
+
+        with rel_col:
+            if reliability_pred:
+                probability = reliability_pred.get('category_probability', 0) * 100
+                st.metric(
+                    "Prediction reliability",
+                    reliability_pred.get('label', 'N/A'),
+                    f"{probability:.0f}% category probability",
+                )
+                interval = reliability_pred.get('interval', {})
+                st.caption(
+                    f"80% range: AQI {interval.get('low')}–{interval.get('high')} "
+                    f"(residual σ {reliability_pred.get('residual_std')})"
+                )
+                st.caption(f"Sensor-estimate AQI: {int(sensor_aqi)}")
+
+        with risk_col:
+            if risk_pred:
+                st.metric(
+                    "Airborne disease risk",
+                    risk_pred.get('level', 'N/A'),
+                    f"score {risk_pred.get('score', 'N/A')}",
+                )
+                for factor in risk_pred.get('factors', [])[:3]:
+                    st.caption(f"• {factor}")
+                st.caption(f"_{risk_pred.get('disclaimer', '')}_")
+
+    if explanation_pred.get('top_factors'):
+        st.subheader("🔍 Why this prediction? (SHAP)")
+        for factor in explanation_pred['top_factors']:
+            arrow = "▲" if factor.get('direction') == 'increases' else "▼"
+            st.write(
+                f"{arrow} **{factor.get('description')}** = "
+                f"{factor.get('value')}{factor.get('unit', '')} "
+                f"({factor.get('contribution', 0):+.3f})"
+            )
+
     # ==== HEALTH ALERTS ====
     st.subheader("🏥 Health Alerts")
     

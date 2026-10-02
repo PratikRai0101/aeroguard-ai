@@ -19,7 +19,6 @@ models:
     - temp
     - hum
     - gas
-    - pm25
 
 # LSTM Configuration
 lstm:

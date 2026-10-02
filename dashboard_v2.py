@@ -16,6 +16,7 @@ from aqi_utils import calculate_aqi, get_aqi_info, OutlierDetector
 from alerts import get_alert
 from predictors import AQIPredictor
 from database import SensorDatabase
+from serial_utils import open_serial
 import yaml
 import serial
 
@@ -38,16 +39,13 @@ BAUD = config.get('serial', {}).get('baudrate', 115200) if config else 115200
 
 
 def connect_serial_with_retry(port, baud, max_retries=3):
-    """Connect to serial with auto-retry"""
+    """Connect to the first available serial port (auto-detect across OSes)."""
     for attempt in range(max_retries):
-        try:
-            ser = serial.Serial(port, baud, timeout=1)
+        ser, _found = open_serial(port, baud, timeout=1)
+        if ser is not None:
             return ser
-        except Exception as e:
-            if attempt < max_retries - 1:
-                time.sleep(1)
-            else:
-                return None
+        if attempt < max_retries - 1:
+            time.sleep(1)
     return None
 
 
@@ -114,7 +112,7 @@ def main():
     ser = connect_serial_with_retry(SERIAL_PORT, BAUD, max_retries=2)
     
     if ser and not FORCE_MOCK:
-        print(f"    ✓ ESP32 detected on {SERIAL_PORT}")
+        print(f"    ✓ ESP32 detected on {ser.port}")
         run_real_mode(ser, db, predictor, outlier_detector, buffer)
     else:
         if FORCE_MOCK:

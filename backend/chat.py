@@ -19,6 +19,8 @@ Role:
 - Never invent a different prediction, reliability value or risk level than the one in the context below.
 - The risk level is an environmental indicator, not a medical diagnosis. Say so if the user asks about disease or personal health.
 - When asked "why" a prediction or risk level was produced, use the SHAP contributing factors in the context.
+- The system's air-quality value is "Predicted AQI (ML model)". The "sensor-estimate AQI" is a cruder raw figure. If both appear, use the predicted AQI as the answer.
+- When you quote any number, copy it exactly from the context. Do not round, average or invent numbers.
 
 Scope rules:
 - Answer only questions about air quality, AQI, sensors, readings, trends, alerts, outdoor conditions, or health guidance related to these readings.
@@ -33,7 +35,11 @@ Current dashboard context:
 def build_context(stats: Dict[str, Any], recent_readings: List[Dict[str, Any]]) -> str:
     """Build a natural-language context block from the latest dashboard data."""
     lines = []
-    lines.append(f"- Indoor AQI: {stats.get('aqi', 'N/A')} ({stats.get('status', 'N/A')})")
+    lines.append(f"- Predicted AQI (ML model): {stats.get('aqi', 'N/A')} ({stats.get('status', 'N/A')})")
+    if stats.get('sensor_aqi') is not None:
+        lines.append(
+            f"- Sensor-estimate AQI (raw gas formula, cruder): {stats.get('sensor_aqi')}"
+        )
     lines.append(f"- Temperature: {stats.get('temp', 'N/A')} °C")
     lines.append(f"- Humidity: {stats.get('hum', 'N/A')} %")
     lines.append(f"- Gas/VOC: {stats.get('gas', 'N/A')}")
@@ -85,10 +91,10 @@ def build_context(stats: Dict[str, Any], recent_readings: List[Dict[str, Any]]) 
             )
 
     if recent_readings:
-        lines.append("- Last few readings:")
-        for r in recent_readings[:5]:
+        lines.append("- Last few readings (most recent last):")
+        for r in recent_readings[-5:]:
             lines.append(
-                f"  {r.get('time', 'N/A')}: AQI={r.get('aqi', 'N/A')}, "
+                f"  {r.get('time', 'N/A')}: sensor-estimate AQI={r.get('aqi', 'N/A')}, "
                 f"T={r.get('temp', 'N/A')}°C, H={r.get('hum', 'N/A')}%, G={r.get('gas', 'N/A')}"
             )
 
@@ -137,7 +143,7 @@ def chat_with_slm(
         # the entire output budget without leaving a visible answer.
         "think": False,
         "options": {
-            "temperature": 0.2,
+            "temperature": 0.1,
             "top_p": 0.9,
             "num_predict": 512,
             "num_ctx": 4096,
